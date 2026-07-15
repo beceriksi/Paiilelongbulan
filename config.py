@@ -24,7 +24,7 @@ class Config:
 
     # Bot Çalışma Ayarları
     SCAN_INTERVAL_SECONDS: int = int(os.getenv("SCAN_INTERVAL_SECONDS", "15"))
-    MIN_GEM_SCORE_TO_ALERT: int = int(os.getenv("MIN_GEM_SCORE_TO_ALERT", "70"))
+    MIN_GEM_SCORE_TO_ALERT: int = int(os.getenv("MIN_GEM_SCORE_TO_ALERT", "60"))
 
     # Puanlama Ağırlıkları (Toplam: 100 Puan)
     WEIGHT_LP_LOCK: float = 10.0
