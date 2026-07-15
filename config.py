@@ -44,7 +44,7 @@ class Config:
     # Desteklenen Ağlar
     SUPPORTED_CHAINS = [
         "solana", "base", "ethereum", "bsc", 
-        "arbitrum", "optimism", "polygon", "avalanche"
+        "arbitrum", "optimism", "robinhood", "polygon", "avalanche"
     ]
 
 # Global konfigürasyon nesnesi
