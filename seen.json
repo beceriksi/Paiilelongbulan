@@ -74,5 +74,44 @@
     "first_seen": 1785270918,
     "passed_safety": true,
     "reasons": []
+  },
+  "2wa4EjBBo1YuJeGiYyMgwMvs96b5d1iqdf555sSWpump": {
+    "first_seen": 1785274541,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "42MPS9ULRcAVV79jQaf6sjcepT38MANKmKQ8wQPipump": {
+    "first_seen": 1785274542,
+    "passed_safety": false,
+    "reasons": [
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %43'ini tutuyor"
+    ]
+  },
+  "24JfohUFKzUymwnGiAEQg2GSE8ykeMRH6VmFv5xzpump": {
+    "first_seen": 1785274543,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "GydeH85JRxmYifWFbHV8Fp4FQRnN5AFYXKCmXMN8rvRN": {
+    "first_seen": 1785274545,
+    "passed_safety": false,
+    "reasons": [
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %34'ini tutuyor"
+    ]
+  },
+  "B6f27ETGcjgGNB1fqULJbXVmw9FnL8HgBp7R83hmpump": {
+    "first_seen": 1785274545,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "2Cn914VFmRasAJyhEQrjuxXoLqTR6b66Cx6vcDWwpump": {
+    "first_seen": 1785274546,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "87kdzhXBsdQdc7S9WfvWYvXsesGeRwhEDF7XSLXBpump": {
+    "first_seen": 1785274547,
+    "passed_safety": true,
+    "reasons": []
   }
 }
