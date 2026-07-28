@@ -113,5 +113,36 @@
     "first_seen": 1785274547,
     "passed_safety": true,
     "reasons": []
+  },
+  "5bNPYEtSpcorAvuwxkcYHaBvsyNpWVFph5LDjCfTpump": {
+    "first_seen": 1785278419,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "7V6Sk63y8Rr1MvcN5mYNp61wgFhy4EeQg5gUASk9pump": {
+    "first_seen": 1785278420,
+    "passed_safety": false,
+    "reasons": [
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %28'ini tutuyor"
+    ]
+  },
+  "J4Kcc5wxxrQc1Ua7vwytTNkHUifa5efGmyqvDYQwpump": {
+    "first_seen": 1785278420,
+    "passed_safety": false,
+    "reasons": [
+      "RugCheck tehlike bayra\u011f\u0131: Creator history of rugged tokens"
+    ]
+  },
+  "jZxm8SjfUwhhVEkUJhqXijTxMj2sUzaVZjxfnyjpump": {
+    "first_seen": 1785278420,
+    "passed_safety": false,
+    "reasons": [
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %32'ini tutuyor"
+    ]
+  },
+  "7LNfxxMAu5sNbg4uY5Kuu5Tvg6CsQGUo4ASkD79Xpump": {
+    "first_seen": 1785278420,
+    "passed_safety": true,
+    "reasons": []
   }
 }
