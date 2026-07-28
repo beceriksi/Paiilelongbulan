@@ -13,5 +13,66 @@
   },
   "6xjNAEtuDHBZFiC7aSQA79QHq1dzBz4Eg8U78NXipump": {
     "first_seen": 1785270109
+  },
+  "E7kJJ23uNaSbFAmuAZu2Bg313VTTZ1bECVaPApLqpump": {
+    "first_seen": 1785270914,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "3XstzAweu14Djh8K8udr7iZmd6DCwGiaSAdKL5NGpump": {
+    "first_seen": 1785270915,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "2vBS6D5mTPbQHChbZevmJ3Ck4uyrmdhbt1LkbyLopump": {
+    "first_seen": 1785270916,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "4tzmsD8EpQVPqHDdzSXWNHJnBLL3fNUFbLv3nufjpump": {
+    "first_seen": 1785270916,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "DWCj1WhLQouv7WgfzLM4V1K3AQadZr4re6gSbLdD7Ppo": {
+    "first_seen": 1785270917,
+    "passed_safety": false,
+    "reasons": [
+      "freeze yetkisi h\u00e2l\u00e2 a\u00e7\u0131k (c\u00fczdanlar dondurulabilir)",
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %95'ini tutuyor",
+      "RugCheck tehlike bayra\u011f\u0131: Freeze Authority still enabled, Large Amount of LP Unlocked, Low Liquidity"
+    ]
+  },
+  "sosd5Q3DutGxMEaukBDmkPgsapMQz59jNjGWmhYcdTQ": {
+    "first_seen": 1785270917,
+    "passed_safety": false,
+    "reasons": [
+      "freeze yetkisi h\u00e2l\u00e2 a\u00e7\u0131k (c\u00fczdanlar dondurulabilir)",
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %75'ini tutuyor",
+      "RugCheck tehlike bayra\u011f\u0131: Freeze Authority still enabled, Large Amount of LP Unlocked, Low Liquidity"
+    ]
+  },
+  "SooEj828BSjtgTecBRkqBJ4oquc713yyFZqbCawawoN": {
+    "first_seen": 1785270918,
+    "passed_safety": false,
+    "reasons": [
+      "freeze yetkisi h\u00e2l\u00e2 a\u00e7\u0131k (c\u00fczdanlar dondurulabilir)",
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %75'ini tutuyor",
+      "RugCheck tehlike bayra\u011f\u0131: Freeze Authority still enabled, Large Amount of LP Unlocked, Low Liquidity"
+    ]
+  },
+  "sokhCSmzutMPPuNcxG1j6gYLowgiM8mswjJu8FBYm5r": {
+    "first_seen": 1785270918,
+    "passed_safety": false,
+    "reasons": [
+      "freeze yetkisi h\u00e2l\u00e2 a\u00e7\u0131k (c\u00fczdanlar dondurulabilir)",
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %61'ini tutuyor",
+      "RugCheck tehlike bayra\u011f\u0131: Freeze Authority still enabled, Large Amount of LP Unlocked, Single holder ownership, Low Liquidity"
+    ]
+  },
+  "4W9nkDkmhVokuv84yeNkSMHQxh1Ta35GMkYMsACbpump": {
+    "first_seen": 1785270918,
+    "passed_safety": true,
+    "reasons": []
   }
 }
