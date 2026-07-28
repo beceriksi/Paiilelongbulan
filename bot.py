@@ -36,8 +36,8 @@ STOPWORDS = {
 
 SEEN_FILE = "seen.json"
 
-TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
-TG_CHAT_ID = os.environ.get("TG_CHAT_ID")
+TG_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TG_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 DEX_BASE = "https://api.dexscreener.com"
 RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/{mint}/report/summary"
