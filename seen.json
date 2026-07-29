@@ -159,5 +159,24 @@
     "first_seen": 1785281803,
     "passed_safety": true,
     "reasons": []
+  },
+  "J6Z7U2z3oJK7ySHN7TEgQANidtmowyBQMdZLCTatntR2": {
+    "first_seen": 1785287150,
+    "passed_safety": true,
+    "reasons": []
+  },
+  "7jX1oS5ZbNcThyXUB92KgFYSa1yiRitKafwoScaYpump": {
+    "first_seen": 1785287151,
+    "passed_safety": false,
+    "reasons": [
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %42'ini tutuyor"
+    ]
+  },
+  "9TPJShvKmyB9Jm1ozuYNh2qGQD6sdXm5c9uHFa8apump": {
+    "first_seen": 1785287151,
+    "passed_safety": false,
+    "reasons": [
+      "en b\u00fcy\u00fck c\u00fczdan arz\u0131n %37'ini tutuyor"
+    ]
   }
 }
