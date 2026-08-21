@@ -23,35 +23,74 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 TOP_COINS = 100
 
-# OKX Top 100'e girebilmek için minimum 24H USDT hacmi
+# OKX Top 100 için minimum 24H hacim
 MIN_24H_VOLUME_USDT = 1_000_000
 
 # Telegram minimum skor
 MIN_SIGNAL_SCORE = 70
 
-# Aynı skor seviyesini tekrar göndermeden önce
+# ============================================================
+# EN ÖNEMLİ FİLTRE
+# ============================================================
+
+# Para akışının coin'in normal 1H hacmine göre
+# minimum anlamlı olması gerekir.
+#
+# Örneğin normal 1H hacim = 10M USDT ise:
+# toplam flow en az 1.5M olmalı.
+#
+MIN_FLOW_TOTAL_RATIO = 0.15
+
+# Net alımın normal 1H hacme oranı
+MIN_NET_FLOW_RATIO = 0.08
+
+# Minimum buy oranı
+MIN_BUY_RATIO = 0.60
+
+# Küçük mutlak akışların tamamen elenmesi
+MIN_NET_FLOW_USDT = 25_000
+
+
+# ============================================================
+# SIGNAL COOLDOWN
+# ============================================================
+
 SIGNAL_COOLDOWN_SECONDS = 4 * 60 * 60
 
-# Büyük işlem eşiği
-LARGE_TRADE_USDT = 25_000
+SCORE_LEVELS = [70, 80, 90]
 
-# Market flow son 1 saat
+
+# ============================================================
+# LARGE TRADE
+# ============================================================
+
+BASE_LARGE_TRADE_USDT = 25_000
+
+
+# ============================================================
+# MARKET FLOW
+# ============================================================
+
 FLOW_WINDOW_SECONDS = 60 * 60
 
-# Relative volume
-VOLUME_STRONG = 2.0
-VOLUME_EXTREME = 3.0
 
-# Cache yenileme süreleri
+# ============================================================
+# RELATIVE VOLUME
+# ============================================================
+
+VOLUME_STRONG = 1.5
+VOLUME_EXTREME = 2.5
+
+
+# ============================================================
+# CACHE
+# ============================================================
+
 ONE_HOUR_REFRESH = 120
 FOUR_HOUR_REFRESH = 600
 ONE_DAY_REFRESH = 1800
 
-# Aynı anda maksimum REST isteği
 MAX_CONCURRENT_REQUESTS = 5
-
-# Sinyal seviyeleri
-SCORE_LEVELS = [70, 80, 90]
 
 
 # ============================================================
@@ -87,17 +126,24 @@ signal_state = {}
 
 
 # ============================================================
+# TELEGRAM BATCH
+# ============================================================
+
+pending_signals = {}
+
+pending_lock = asyncio.Lock()
+
+
+# ============================================================
 # TELEGRAM
 # ============================================================
 
 async def send_telegram_message(message):
 
-    if not TELEGRAM_BOT_TOKEN:
-        print("❌ TELEGRAM_BOT_TOKEN bulunamadı.")
-        return
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
 
-    if not TELEGRAM_CHAT_ID:
-        print("❌ TELEGRAM_CHAT_ID bulunamadı.")
+        print("❌ Telegram Secret bulunamadı.")
+
         return
 
     url = (
@@ -113,33 +159,22 @@ async def send_telegram_message(message):
 
     try:
 
-        timeout = aiohttp.ClientTimeout(
-            total=15
-        )
-
-        async with aiohttp.ClientSession(
-            timeout=timeout
-        ) as session:
+        async with aiohttp.ClientSession() as session:
 
             async with session.post(
                 url,
-                json=payload
+                json=payload,
+                timeout=15
             ) as response:
 
                 if response.status != 200:
 
-                    body = await response.text()
+                    text = await response.text()
 
                     print(
                         "Telegram HTTP hata:",
                         response.status,
-                        body
-                    )
-
-                else:
-
-                    print(
-                        "📨 Telegram mesajı gönderildi."
+                        text
                     )
 
     except Exception as e:
@@ -163,7 +198,7 @@ def safe_float(value, default=0):
 
         return float(value)
 
-    except Exception:
+    except:
 
         return default
 
@@ -184,14 +219,10 @@ def create_dataframe(ohlcv):
 
 
 # ============================================================
-# TECHNICAL INDICATORS
-# pandas-ta kullanılmıyor
+# EMA
 # ============================================================
 
-def calculate_ema(
-    series,
-    period
-):
+def calculate_ema(series, period):
 
     return series.ewm(
         span=period,
@@ -199,10 +230,11 @@ def calculate_ema(
     ).mean()
 
 
-def calculate_rsi(
-    series,
-    period=14
-):
+# ============================================================
+# RSI
+# ============================================================
+
+def calculate_rsi(series, period=14):
 
     delta = series.diff()
 
@@ -224,62 +256,48 @@ def calculate_rsi(
         adjust=False
     ).mean()
 
-    avg_loss = avg_loss.replace(
+    rs = avg_gain / avg_loss.replace(
         0,
-        float("nan")
+        1e-10
     )
 
-    rs = (
-        avg_gain /
-        avg_loss
-    )
-
-    rsi = (
-        100 -
-        (
-            100 /
-            (1 + rs)
-        )
+    rsi = 100 - (
+        100 / (1 + rs)
     )
 
     return rsi
 
 
-def calculate_macd(
-    series,
-    fast=12,
-    slow=26,
-    signal=9
-):
+# ============================================================
+# MACD
+# ============================================================
 
-    ema_fast = calculate_ema(
+def calculate_macd(series):
+
+    ema12 = calculate_ema(
         series,
-        fast
+        12
     )
 
-    ema_slow = calculate_ema(
+    ema26 = calculate_ema(
         series,
-        slow
+        26
     )
 
-    macd_line = (
-        ema_fast -
-        ema_slow
-    )
+    macd = ema12 - ema26
 
-    signal_line = calculate_ema(
-        macd_line,
-        signal
+    signal = calculate_ema(
+        macd,
+        9
     )
 
     histogram = (
-        macd_line -
-        signal_line
+        macd - signal
     )
 
     return (
-        macd_line,
-        signal_line,
+        macd,
+        signal,
         histogram
     )
 
@@ -308,10 +326,7 @@ class MarketFlow:
         self.lock = asyncio.Lock()
 
 
-    async def add_trade(
-        self,
-        trade
-    ):
+    async def add_trade(self, trade):
 
         try:
 
@@ -325,16 +340,10 @@ class MarketFlow:
 
             side = trade.get("side")
 
-            if price <= 0:
+            if price <= 0 or amount <= 0:
                 return
 
-            if amount <= 0:
-                return
-
-            value = (
-                price *
-                amount
-            )
+            value = price * amount
 
             now = time.monotonic()
 
@@ -358,7 +367,10 @@ class MarketFlow:
 
                     self.sell_volume += value
 
-                if value >= LARGE_TRADE_USDT:
+
+                # Büyük işlem.
+                # Mutlak 25K minimum.
+                if value >= BASE_LARGE_TRADE_USDT:
 
                     if side == "buy":
 
@@ -372,6 +384,7 @@ class MarketFlow:
 
                         self.large_sell_count += 1
 
+
                 await self.cleanup_locked(
                     now
                 )
@@ -381,10 +394,7 @@ class MarketFlow:
             pass
 
 
-    async def cleanup_locked(
-        self,
-        now
-    ):
+    async def cleanup_locked(self, now):
 
         cutoff = (
             now -
@@ -397,11 +407,9 @@ class MarketFlow:
             self.trades[0][0] < cutoff
         ):
 
-            (
-                _,
-                value,
-                side
-            ) = self.trades.popleft()
+            _, value, side = (
+                self.trades.popleft()
+            )
 
             if side == "buy":
 
@@ -411,7 +419,8 @@ class MarketFlow:
 
                 self.sell_volume -= value
 
-            if value >= LARGE_TRADE_USDT:
+
+            if value >= BASE_LARGE_TRADE_USDT:
 
                 if side == "buy":
 
@@ -424,6 +433,7 @@ class MarketFlow:
                     self.large_sell_volume -= value
 
                     self.large_sell_count -= 1
+
 
         self.buy_volume = max(
             self.buy_volume,
@@ -445,20 +455,8 @@ class MarketFlow:
             0
         )
 
-        self.large_buy_count = max(
-            self.large_buy_count,
-            0
-        )
 
-        self.large_sell_count = max(
-            self.large_sell_count,
-            0
-        )
-
-
-    async def cleanup_loop(
-        self
-    ):
+    async def cleanup_loop(self):
 
         while True:
 
@@ -473,18 +471,14 @@ class MarketFlow:
             except Exception as e:
 
                 print(
-                    "Flow cleanup hatası:",
+                    "Flow cleanup hata:",
                     e
                 )
 
-            await asyncio.sleep(
-                30
-            )
+            await asyncio.sleep(30)
 
 
-    async def snapshot(
-        self
-    ):
+    async def snapshot(self):
 
         async with self.lock:
 
@@ -512,26 +506,29 @@ class MarketFlow:
                 0
             )
 
-            total = (
-                buy +
-                sell
-            )
+            total = buy + sell
 
             if total > 0:
 
                 buy_ratio = (
-                    buy /
-                    total
+                    buy / total
                 )
 
             else:
 
                 buy_ratio = 0.5
 
+
+            net_flow = (
+                buy - sell
+            )
+
+
             large_total = (
                 large_buy +
                 large_sell
             )
+
 
             if large_total > 0:
 
@@ -544,6 +541,7 @@ class MarketFlow:
 
                 large_buy_ratio = 0.5
 
+
             return {
 
                 "buy_volume":
@@ -554,6 +552,9 @@ class MarketFlow:
 
                 "total_volume":
                     total,
+
+                "net_flow":
+                    net_flow,
 
                 "buy_ratio":
                     buy_ratio,
@@ -579,7 +580,7 @@ class MarketFlow:
 
 
 # ============================================================
-# REST OHLCV
+# REST
 # ============================================================
 
 async def fetch_ohlcv_safe(
@@ -627,7 +628,6 @@ async def update_symbol_timeframe(
     )
 
     if not candles:
-
         return
 
     df = create_dataframe(
@@ -653,28 +653,25 @@ async def update_symbol_timeframe(
 
 
 # ============================================================
-# 1D CACHE
+# CACHE REFRESH
 # ============================================================
 
-async def refresh_1d(
-    symbols
-):
+async def refresh_1d(symbols):
 
     print(
         "\n📅 1D cache yenileniyor..."
     )
 
-    tasks = []
+    tasks = [
 
-    for symbol in symbols:
-
-        tasks.append(
-            update_symbol_timeframe(
-                symbol,
-                "1d",
-                60
-            )
+        update_symbol_timeframe(
+            symbol,
+            "1d",
+            60
         )
+
+        for symbol in symbols
+    ]
 
     await asyncio.gather(
         *tasks,
@@ -682,33 +679,26 @@ async def refresh_1d(
     )
 
     print(
-        "✅ 1D cache tamamlandı."
+        "✅ 1D tamamlandı."
     )
 
 
-# ============================================================
-# 4H CACHE
-# ============================================================
-
-async def refresh_4h(
-    symbols
-):
+async def refresh_4h(symbols):
 
     print(
         "\n📊 4H cache yenileniyor..."
     )
 
-    tasks = []
+    tasks = [
 
-    for symbol in symbols:
-
-        tasks.append(
-            update_symbol_timeframe(
-                symbol,
-                "4h",
-                80
-            )
+        update_symbol_timeframe(
+            symbol,
+            "4h",
+            80
         )
+
+        for symbol in symbols
+    ]
 
     await asyncio.gather(
         *tasks,
@@ -716,33 +706,26 @@ async def refresh_4h(
     )
 
     print(
-        "✅ 4H cache tamamlandı."
+        "✅ 4H tamamlandı."
     )
 
 
-# ============================================================
-# 1H CACHE
-# ============================================================
-
-async def refresh_1h(
-    symbols
-):
+async def refresh_1h(symbols):
 
     print(
         "\n⚡ 1H cache yenileniyor..."
     )
 
-    tasks = []
+    tasks = [
 
-    for symbol in symbols:
-
-        tasks.append(
-            update_symbol_timeframe(
-                symbol,
-                "1h",
-                50
-            )
+        update_symbol_timeframe(
+            symbol,
+            "1h",
+            50
         )
+
+        for symbol in symbols
+    ]
 
     await asyncio.gather(
         *tasks,
@@ -750,7 +733,7 @@ async def refresh_1h(
     )
 
     print(
-        "✅ 1H cache tamamlandı."
+        "✅ 1H tamamlandı."
     )
 
 
@@ -758,9 +741,7 @@ async def refresh_1h(
 # 1D ANALYSIS
 # ============================================================
 
-def analyze_1d_from_cache(
-    symbol
-):
+def analyze_1d_from_cache(symbol):
 
     try:
 
@@ -773,12 +754,13 @@ def analyze_1d_from_cache(
             return {
                 "score": 0,
                 "ema_aligned": False,
-                "price_change_24h": 0,
-                "close": 0
+                "price_change_24h": 0
             }
 
-        # Açık günlük mumu kullanma
+
+        # Açık mum yok
         df = df.iloc[:-1].copy()
+
 
         df["ema10"] = calculate_ema(
             df["close"],
@@ -795,30 +777,39 @@ def analyze_1d_from_cache(
             30
         )
 
+
         current = df.iloc[-1]
 
         previous = df.iloc[-2]
 
+
         score = 0
 
+
         ema_aligned = (
+
             current["ema10"] >
             current["ema20"]
+
             and
+
             current["ema20"] >
             current["ema30"]
         )
 
+
         if ema_aligned:
 
-            score += 20
+            score += 18
+
 
         if (
             current["ema10"] >
             previous["ema10"]
         ):
 
-            score += 3
+            score += 2
+
 
         if (
             current["close"] >
@@ -827,14 +818,18 @@ def analyze_1d_from_cache(
 
             score += 2
 
+
         price_change = (
+
             (
                 current["close"] -
                 previous["close"]
             )
             /
             previous["close"]
+
         ) * 100
+
 
         return {
 
@@ -851,18 +846,17 @@ def analyze_1d_from_cache(
                 current["close"]
         }
 
+
     except Exception as e:
 
         print(
-            f"1D analysis hata "
-            f"{symbol}: {e}"
+            f"1D hata {symbol}: {e}"
         )
 
         return {
             "score": 0,
             "ema_aligned": False,
-            "price_change_24h": 0,
-            "close": 0
+            "price_change_24h": 0
         }
 
 
@@ -870,9 +864,7 @@ def analyze_1d_from_cache(
 # 4H ANALYSIS
 # ============================================================
 
-def analyze_4h_from_cache(
-    symbol
-):
+def analyze_4h_from_cache(symbol):
 
     try:
 
@@ -887,8 +879,9 @@ def analyze_4h_from_cache(
                 "bullish": False
             }
 
-        # Açık 4H mumu kullanma
+
         df = df.iloc[:-1].copy()
+
 
         df["ema20"] = calculate_ema(
             df["close"],
@@ -900,24 +893,31 @@ def analyze_4h_from_cache(
             50
         )
 
+
         current = df.iloc[-1]
 
         previous = df.iloc[-2]
 
+
         score = 0
 
+
         bullish = (
+
             current["close"] >
             current["ema20"]
+
             and
+
             current["ema20"] >
             current["ema50"]
         )
 
-        # 4H yukarı trend önemli bonus
+
         if bullish:
 
             score += 15
+
 
         if (
             current["ema20"] >
@@ -926,17 +926,22 @@ def analyze_4h_from_cache(
 
             score += 3
 
-        # Tamamen bearish ise
-        # bonus vermiyoruz ama sinyali öldürmüyoruz.
+
+        # Bearish trend puan düşürür
+        # ama sinyali öldürmez.
         if (
+
             current["close"] <
             current["ema20"]
+
             and
+
             current["ema20"] <
             current["ema50"]
         ):
 
-            score -= 10
+            score -= 8
+
 
         return {
 
@@ -947,11 +952,11 @@ def analyze_4h_from_cache(
                 bullish
         }
 
+
     except Exception as e:
 
         print(
-            f"4H analysis hata "
-            f"{symbol}: {e}"
+            f"4H hata {symbol}: {e}"
         )
 
         return {
@@ -961,12 +966,10 @@ def analyze_4h_from_cache(
 
 
 # ============================================================
-# 1H ANALYSIS
+# 1H MOMENTUM
 # ============================================================
 
-def analyze_1h_from_cache(
-    symbol
-):
+def analyze_1h_from_cache(symbol):
 
     try:
 
@@ -978,12 +981,14 @@ def analyze_1h_from_cache(
 
             return None
 
-        # Açık 1H mumunu momentum hesabından çıkar
+
         closed = df.iloc[:-1].copy()
+
 
         if len(closed) < 25:
 
             return None
+
 
         closed["ema20"] = calculate_ema(
             closed["close"],
@@ -1000,6 +1005,7 @@ def analyze_1h_from_cache(
             14
         )
 
+
         (
             closed["macd"],
             closed["macd_signal"],
@@ -1008,16 +1014,16 @@ def analyze_1h_from_cache(
             closed["close"]
         )
 
+
         current = closed.iloc[-1]
 
         previous = closed.iloc[-2]
 
+
         score = 0
 
-        # ----------------------------------------------------
-        # 1H MOMENTUM
-        # ----------------------------------------------------
 
+        # Fiyat EMA20 üzerinde
         if (
             current["close"] >
             current["ema20"]
@@ -1025,6 +1031,8 @@ def analyze_1h_from_cache(
 
             score += 5
 
+
+        # EMA20 yükseliyor
         if (
             current["ema20"] >
             previous["ema20"]
@@ -1032,6 +1040,8 @@ def analyze_1h_from_cache(
 
             score += 3
 
+
+        # RSI yükseliyor
         if (
             current["rsi"] >
             previous["rsi"]
@@ -1039,15 +1049,20 @@ def analyze_1h_from_cache(
 
             score += 2
 
+
+        # RSI 50 üzerinde
         if current["rsi"] >= 50:
 
             score += 2
 
-        # Aşırı alım cezası
-        if current["rsi"] > 75:
+
+        # Aşırı şişmiş momentum
+        if current["rsi"] > 78:
 
             score -= 5
 
+
+        # MACD histogram güçleniyor
         if (
             current["macd_hist"] >
             previous["macd_hist"]
@@ -1055,35 +1070,34 @@ def analyze_1h_from_cache(
 
             score += 3
 
-        if (
-            current["macd_hist"] > 0
-        ):
+
+        if current["macd_hist"] > 0:
 
             score += 2
 
+
         # ----------------------------------------------------
-        # 1H HACİM
+        # CURRENT 1H VOLUME
         # ----------------------------------------------------
 
-        # Burada açık 1H mumun hacmini kullanıyoruz.
-        # Bu bir 1m/5m sinyali değildir.
-        current_open_candle = df.iloc[-1]
+        current_open = df.iloc[-1]
 
         current_volume = safe_float(
-            current_open_candle["volume"]
+            current_open["volume"]
         )
 
-        historical_volumes = (
-            closed["volume"]
-            .tail(24)
-            .tolist()
-        )
 
         historical_volumes = [
+
             safe_float(x)
-            for x in historical_volumes
+
+            for x in closed[
+                "volume"
+            ].tail(24).tolist()
+
             if safe_float(x) > 0
         ]
+
 
         if historical_volumes:
 
@@ -1094,6 +1108,7 @@ def analyze_1h_from_cache(
         else:
 
             normal_volume = 0
+
 
         if normal_volume > 0:
 
@@ -1106,19 +1121,36 @@ def analyze_1h_from_cache(
 
             relative_volume = 0
 
-        if (
-            relative_volume >=
-            VOLUME_STRONG
-        ):
 
-            score += 15
+        if relative_volume >= VOLUME_STRONG:
 
-        if (
-            relative_volume >=
-            VOLUME_EXTREME
-        ):
+            score += 10
+
+
+        if relative_volume >= VOLUME_EXTREME:
 
             score += 5
+
+
+        # Momentum label
+        if score >= 18:
+
+            momentum_label = (
+                "🔥 Güçlü Momentum"
+            )
+
+        elif score >= 11:
+
+            momentum_label = (
+                "🟢 Momentum Güçleniyor"
+            )
+
+        else:
+
+            momentum_label = (
+                "🟡 Zayıf Momentum"
+            )
+
 
         return {
 
@@ -1135,26 +1167,20 @@ def analyze_1h_from_cache(
                 normal_volume,
 
             "rsi":
-                safe_float(
-                    current["rsi"]
-                ),
+                current["rsi"],
 
-            "macd_hist":
-                safe_float(
-                    current["macd_hist"]
-                ),
+            "momentum_label":
+                momentum_label,
 
             "closed_price":
-                safe_float(
-                    current["close"]
-                )
+                current["close"]
         }
+
 
     except Exception as e:
 
         print(
-            f"1H analysis hata "
-            f"{symbol}: {e}"
+            f"1H hata {symbol}: {e}"
         )
 
         return None
@@ -1184,9 +1210,12 @@ def analyze_price_position_from_cache(
                 "change_24h": 0
             }
 
+
         closed = df.iloc[:-1].copy()
 
+
         current_price = flow.last_price
+
 
         if current_price <= 0:
 
@@ -1194,48 +1223,46 @@ def analyze_price_position_from_cache(
                 df.iloc[-1]["close"]
             )
 
+
         resistance = (
             closed["high"]
             .tail(20)
             .max()
         )
 
-        if current_price > 0:
 
-            distance_percent = (
-                (
-                    resistance -
-                    current_price
-                )
-                /
+        distance_percent = (
+
+            (
+                resistance -
                 current_price
-            ) * 100
+            )
+            /
+            current_price
 
-        else:
+        ) * 100
 
-            distance_percent = 0
 
         score = 0
 
         near_breakout = False
 
-        # Direncin %2'si içindeyse
+
         if (
-            0 <=
-            distance_percent <=
-            2
+            0 <= distance_percent <= 2
         ):
 
-            score += 10
+            score += 8
 
             near_breakout = True
 
-        # Direnç kırıldıysa
+
         if current_price > resistance:
 
             score += 10
 
             near_breakout = True
+
 
         if len(closed) >= 24:
 
@@ -1246,12 +1273,14 @@ def analyze_price_position_from_cache(
             if old_price > 0:
 
                 change_24h = (
+
                     (
                         current_price -
                         old_price
                     )
                     /
                     old_price
+
                 ) * 100
 
             else:
@@ -1262,15 +1291,15 @@ def analyze_price_position_from_cache(
 
             change_24h = 0
 
-        # Çok fazla yükselmiş coinleri
-        # otomatik olarak biraz aşağı çek
+
         if change_24h > 25:
 
-            score -= 15
+            score -= 12
 
         elif change_24h > 15:
 
-            score -= 10
+            score -= 7
+
 
         return {
 
@@ -1287,11 +1316,11 @@ def analyze_price_position_from_cache(
                 change_24h
         }
 
+
     except Exception as e:
 
         print(
-            f"Price analysis hata "
-            f"{symbol}: {e}"
+            f"Price hata {symbol}: {e}"
         )
 
         return {
@@ -1303,38 +1332,203 @@ def analyze_price_position_from_cache(
 
 
 # ============================================================
-# FLOW SCORE
+# FLOW ANALYSIS
 # ============================================================
 
-def calculate_flow_score(
-    flow
+def analyze_flow(
+    flow,
+    normal_1h_volume
 ):
 
-    score = 0
+    buy = flow[
+        "buy_volume"
+    ]
+
+    sell = flow[
+        "sell_volume"
+    ]
+
+    total = flow[
+        "total_volume"
+    ]
+
+    net = flow[
+        "net_flow"
+    ]
 
     buy_ratio = flow[
         "buy_ratio"
     ]
 
+
+    if normal_1h_volume <= 0:
+
+        return {
+
+            "score": 0,
+
+            "strong": False,
+
+            "buy_ratio":
+                buy_ratio,
+
+            "net_flow":
+                net,
+
+            "total":
+                total,
+
+            "flow_ratio":
+                0,
+
+            "net_ratio":
+                0,
+
+            "label":
+                "⚪ Zayıf",
+
+            "activity":
+                "Yetersiz"
+        }
+
+
+    flow_ratio = (
+        total /
+        normal_1h_volume
+    )
+
+
+    net_ratio = (
+        net /
+        normal_1h_volume
+    )
+
+
     # --------------------------------------------------------
-    # BUY / SELL FLOW
+    # GERÇEK PARA GİRİŞİ
     # --------------------------------------------------------
 
-    if buy_ratio >= 0.65:
+    strong_flow = (
 
-        score += 10
+        buy_ratio >=
+        MIN_BUY_RATIO
 
-    elif buy_ratio >= 0.58:
+        and
+
+        flow_ratio >=
+        MIN_FLOW_TOTAL_RATIO
+
+        and
+
+        net_ratio >=
+        MIN_NET_FLOW_RATIO
+
+        and
+
+        net >=
+        MIN_NET_FLOW_USDT
+    )
+
+
+    score = 0
+
+
+    if strong_flow:
+
+        score += 12
+
+
+    if (
+        buy_ratio >= 0.65
+        and
+        net_ratio >= 0.15
+    ):
+
+        score += 6
+
+
+    if (
+        buy_ratio >= 0.70
+        and
+        net_ratio >= 0.20
+    ):
 
         score += 5
 
-    elif buy_ratio <= 0.35:
 
-        score -= 7
+    # Aktivite
+    if flow_ratio >= 0.30:
 
-    # --------------------------------------------------------
-    # LARGE TRADE FLOW
-    # --------------------------------------------------------
+        activity = "🔥 Çok Güçlü"
+
+    elif flow_ratio >= 0.20:
+
+        activity = "🟢 Güçlü"
+
+    elif flow_ratio >= 0.15:
+
+        activity = "🟡 Orta"
+
+    else:
+
+        activity = "⚪ Zayıf"
+
+
+    if strong_flow:
+
+        if net_ratio >= 0.20:
+
+            label = "🔥 Güçlü Para Girişi"
+
+        else:
+
+            label = "🟢 Para Girişi"
+
+
+    else:
+
+        label = "⚪ Anlamlı Para Girişi Yok"
+
+
+    return {
+
+        "score":
+            score,
+
+        "strong":
+            strong_flow,
+
+        "buy_ratio":
+            buy_ratio,
+
+        "net_flow":
+            net,
+
+        "total":
+            total,
+
+        "flow_ratio":
+            flow_ratio,
+
+        "net_ratio":
+            net_ratio,
+
+        "label":
+            label,
+
+        "activity":
+            activity
+    }
+
+
+# ============================================================
+# WHALE ANALYSIS
+# ============================================================
+
+def analyze_whale(
+    flow,
+    normal_1h_volume
+):
 
     large_buy = flow[
         "large_buy_volume"
@@ -1344,41 +1538,89 @@ def calculate_flow_score(
         "large_sell_volume"
     ]
 
-    large_total = (
+    total_large = (
         large_buy +
         large_sell
     )
 
-    # Büyük işlem aktivitesi
+
+    if normal_1h_volume <= 0:
+
+        return {
+            "meaningful": False,
+            "label": ""
+        }
+
+
+    # Büyük işlemlerin normal hacme oranı
+    large_ratio = (
+        total_large /
+        normal_1h_volume
+    )
+
+
+    # Normal 1H hacmin en az %2'si
+    if large_ratio < 0.02:
+
+        return {
+            "meaningful": False,
+            "label": ""
+        }
+
+
     if (
-        large_total >=
-        LARGE_TRADE_USDT * 10
+        large_buy > 0
+        and
+        large_sell > 0
     ):
 
-        score += 5
+        if large_buy >= large_sell * 1.5:
 
-        large_buy_ratio = (
-            large_buy /
-            large_total
-        )
+            return {
+                "meaningful": True,
+                "label":
+                    "🐋 Büyük Alıcı Aktivitesi"
+            }
 
-        if large_buy_ratio >= 0.60:
+        elif large_sell >= large_buy * 1.5:
 
-            score += 3
+            return {
+                "meaningful": True,
+                "label":
+                    "🐋 Büyük Satıcı Aktivitesi"
+            }
 
-        # Hem büyük alıcı hem büyük satıcı
-        elif (
-            large_buy >=
-            LARGE_TRADE_USDT * 5
-            and
-            large_sell >=
-            LARGE_TRADE_USDT * 5
-        ):
+        else:
 
-            # Yön yerine aktivite bonusu
-            score += 2
+            return {
+                "meaningful": True,
+                "label":
+                    "🐋 Büyük Oyuncu Aktivitesi"
+            }
 
-    return score
+
+    if large_buy > large_sell:
+
+        return {
+            "meaningful": True,
+            "label":
+                "🐋 Büyük Alıcı Aktivitesi"
+        }
+
+
+    if large_sell > large_buy:
+
+        return {
+            "meaningful": True,
+            "label":
+                "🐋 Büyük Satıcı Aktivitesi"
+        }
+
+
+    return {
+        "meaningful": False,
+        "label": ""
+    }
 
 
 # ============================================================
@@ -1411,27 +1653,59 @@ async def calculate_score(
 
                 return None
 
+
         daily = analyze_1d_from_cache(
             symbol
         )
+
 
         four_h = analyze_4h_from_cache(
             symbol
         )
 
+
         one_h = analyze_1h_from_cache(
             symbol
         )
+
 
         if one_h is None:
 
             return None
 
+
         flow_data = await flow.snapshot()
 
-        flow_score = calculate_flow_score(
-            flow_data
+
+        # ----------------------------------------------------
+        # NORMAL 1H HACİM
+        # ----------------------------------------------------
+
+        normal_1h_volume = (
+            one_h["normal_volume"] *
+            one_h["closed_price"]
         )
+
+
+        # OKX candle volume coin miktarıdır.
+        # USDT karşılığını hesaplıyoruz.
+
+
+        flow_analysis = analyze_flow(
+
+            flow_data,
+
+            normal_1h_volume
+        )
+
+
+        whale = analyze_whale(
+
+            flow_data,
+
+            normal_1h_volume
+        )
+
 
         price = (
             analyze_price_position_from_cache(
@@ -1440,29 +1714,54 @@ async def calculate_score(
             )
         )
 
+
         total_score = (
+
             daily["score"]
+
             +
+
             four_h["score"]
+
             +
+
             one_h["score"]
+
             +
-            flow_score
+
+            flow_analysis["score"]
+
             +
+
             price["score"]
         )
+
 
         # ----------------------------------------------------
         # LIQUIDITY BONUS
         # ----------------------------------------------------
 
-        if market_24h_volume >= 10_000_000:
+        if market_24h_volume >= 20_000_000:
 
             total_score += 5
 
+        elif market_24h_volume >= 10_000_000:
+
+            total_score += 4
+
         elif market_24h_volume >= 5_000_000:
 
-            total_score += 3
+            total_score += 2
+
+
+        total_score = max(
+            0,
+            min(
+                100,
+                total_score
+            )
+        )
+
 
         return {
 
@@ -1481,12 +1780,19 @@ async def calculate_score(
             "flow":
                 flow_data,
 
+            "flow_analysis":
+                flow_analysis,
+
+            "whale":
+                whale,
+
             "price":
                 price,
 
             "market_24h_volume":
                 market_24h_volume
         }
+
 
     except Exception as e:
 
@@ -1507,6 +1813,7 @@ async def get_top_100_symbols(
 
     candidates = []
 
+
     symbols = [
 
         symbol
@@ -1515,22 +1822,30 @@ async def get_top_100_symbols(
         in markets.items()
 
         if (
+
             symbol.endswith("/USDT")
+
             and
+
             market.get("spot")
+
             and
+
             market.get("active")
         )
     ]
+
 
     print(
         f"OKX USDT spot market: "
         f"{len(symbols)}"
     )
 
+
     try:
 
         tickers = await exchange.fetch_tickers()
+
 
         for symbol in symbols:
 
@@ -1538,13 +1853,16 @@ async def get_top_100_symbols(
                 symbol
             )
 
+
             if not ticker:
 
                 continue
 
+
             quote_volume = safe_float(
                 ticker.get("quoteVolume")
             )
+
 
             if (
                 quote_volume >=
@@ -1558,18 +1876,22 @@ async def get_top_100_symbols(
                     )
                 )
 
+
         candidates.sort(
             key=lambda x: x[1],
             reverse=True
         )
 
+
         top = candidates[
             :TOP_COINS
         ]
 
+
         print(
             "\n========== OKX TOP 100 =========="
         )
+
 
         for index, (
             symbol,
@@ -1585,11 +1907,14 @@ async def get_top_100_symbols(
                 f"${volume:,.0f}"
             )
 
+
         print(
             "=================================\n"
         )
 
+
         return top
+
 
     except Exception as e:
 
@@ -1602,148 +1927,7 @@ async def get_top_100_symbols(
 
 
 # ============================================================
-# TELEGRAM MESSAGE
-# ============================================================
-
-def create_signal_message(
-    symbol,
-    result,
-    level
-):
-
-    score = result["score"]
-
-    daily = result["daily"]
-
-    four_h = result["4h"]
-
-    one_h = result["1h"]
-
-    flow = result["flow"]
-
-    price = result["price"]
-
-    if level >= 90:
-
-        priority = (
-            "🚨 HIGH PRIORITY"
-        )
-
-    elif level >= 80:
-
-        priority = (
-            "🟢 STRONG WATCH"
-        )
-
-    else:
-
-        priority = (
-            "🟡 RADAR"
-        )
-
-    buy_ratio = (
-        flow["buy_ratio"] *
-        100
-    )
-
-    large_buy_ratio = (
-        flow["large_buy_ratio"] *
-        100
-    )
-
-    message = (
-
-        f"{priority}\n\n"
-
-        f"🪙 *Coin:* `{symbol}`\n"
-        f"⭐ *Score:* `{score}/100`\n"
-        f"🎯 *Yeni Seviye:* `{level}+`\n\n"
-
-        f"📅 *1D TREND*\n"
-
-        f"EMA 10 > 20 > 30: "
-        f"{'🟢 EVET' if daily['ema_aligned'] else '⚪ HAYIR'}\n"
-
-        f"1D Değişim: "
-        f"`{daily['price_change_24h']:.2f}%`\n\n"
-
-        f"📈 *4H TREND*\n"
-
-        f"Bullish: "
-        f"{'🟢 EVET' if four_h['bullish'] else '⚪ HAYIR'}\n\n"
-
-        f"⚡ *1H MOMENTUM*\n"
-
-        f"RSI: "
-        f"`{one_h['rsi']:.1f}`\n"
-
-        f"Relative Volume: "
-        f"`{one_h['relative_volume']:.2f}x`\n"
-
-        f"Normal 1H Volume: "
-        f"`{one_h['normal_volume']:,.0f}`\n"
-
-        f"Current 1H Volume: "
-        f"`{one_h['current_volume']:,.0f}`\n\n"
-
-        f"🔥 *SON 1 SAAT MARKET FLOW*\n"
-
-        f"Buy: "
-        f"`{flow['buy_volume']:,.0f} USDT`\n"
-
-        f"Sell: "
-        f"`{flow['sell_volume']:,.0f} USDT`\n"
-
-        f"Buy Ratio: "
-        f"`{buy_ratio:.1f}%`\n\n"
-
-        f"🐋 *LARGE TRADE FLOW*\n"
-
-        f"Large Buy: "
-        f"`{flow['large_buy_volume']:,.0f} USDT`\n"
-
-        f"Large Sell: "
-        f"`{flow['large_sell_volume']:,.0f} USDT`\n"
-
-        f"Large Buy Ratio: "
-        f"`{large_buy_ratio:.1f}%`\n"
-
-        f"Large Buy Count: "
-        f"`{flow['large_buy_count']}`\n"
-
-        f"Large Sell Count: "
-        f"`{flow['large_sell_count']}`\n\n"
-
-        f"🎯 *PRICE POSITION*\n"
-
-        f"Breakout mesafesi: "
-        f"`{price['distance_percent']:.2f}%`\n"
-
-        f"24H hareket: "
-        f"`{price['change_24h']:.2f}%`\n\n"
-
-        f"💧 *OKX 24H VOLUME*\n"
-
-        f"`{result['market_24h_volume']:,.0f} USDT`\n\n"
-
-        f"💡 *Yorum:* "
-
-        f"Bu coin kısa vadeli scalp sinyali "
-        f"olarak değil, spot manuel inceleme "
-        f"için radara alındı. "
-
-        f"4H trend, 1H momentum, hacim ve "
-        f"son 1 saatlik alıcı/satıcı aktivitesi "
-        f"birlikte değerlendirilmiştir.\n\n"
-
-        f"⚠️ *1m / 5m sinyali değildir.*"
-    )
-
-    return message
-
-
-# ============================================================
-# SIGNAL LEVEL LOGIC
+# SIGNAL LEVEL
 # ============================================================
 
 def get_new_signal_level(
@@ -1753,13 +1937,17 @@ def get_new_signal_level(
 
     now = time.monotonic()
 
+
     state = signal_state.get(
+
         symbol,
+
         {
             "last_level": 0,
             "last_time": 0
         }
     )
+
 
     last_level = state[
         "last_level"
@@ -1769,13 +1957,16 @@ def get_new_signal_level(
         "last_time"
     ]
 
+
     current_level = 0
+
 
     for level in SCORE_LEVELS:
 
         if score >= level:
 
             current_level = level
+
 
     if current_level == 0:
 
@@ -1791,7 +1982,7 @@ def get_new_signal_level(
 
         return 0
 
-    # İlk kez bu seviyeye ulaştı
+
     if current_level > last_level:
 
         signal_state[
@@ -1807,13 +1998,15 @@ def get_new_signal_level(
 
         return current_level
 
-    # Aynı seviyede cooldown
+
     if (
+
         current_level ==
         last_level
+
         and
-        now -
-        last_time >=
+
+        now - last_time >=
         SIGNAL_COOLDOWN_SECONDS
     ):
 
@@ -1830,11 +2023,248 @@ def get_new_signal_level(
 
         return current_level
 
+
     return 0
 
 
 # ============================================================
-# WEBSOCKET LISTENER
+# SIGNAL TEXT
+# ============================================================
+
+def format_signal(
+    symbol,
+    result,
+    level
+):
+
+    score = result["score"]
+
+    four_h = result["4h"]
+
+    one_h = result["1h"]
+
+    flow = result["flow_analysis"]
+
+    price = result["price"]
+
+
+    if level >= 90:
+
+        emoji = "🔥"
+
+    elif level >= 80:
+
+        emoji = "🟢"
+
+    else:
+
+        emoji = "🟡"
+
+
+    trend = (
+        "🟢 Bullish"
+        if four_h["bullish"]
+        else
+        "⚪ Nötr/Bearish"
+    )
+
+
+    return (
+
+        f"{emoji} *{symbol}* — `{score}`\n"
+
+        f"📈 4H: {trend}\n"
+
+        f"⚡ 1H: "
+        f"{one_h['momentum_label']}\n"
+
+        f"📊 Hacim: "
+        f"`{one_h['relative_volume']:.1f}x`\n"
+
+        f"💰 Flow: "
+        f"`+{flow['net_flow']:,.0f} USDT` "
+        f"({flow['buy_ratio'] * 100:.0f}% alış)\n"
+
+        f"🔥 Aktivite: "
+        f"{flow['activity']}\n"
+
+        f"🎯 Direnç: "
+        f"`%{max(price['distance_percent'], 0):.1f}`"
+
+    )
+
+
+# ============================================================
+# BATCH TELEGRAM
+# ============================================================
+
+async def batch_sender():
+
+    while True:
+
+        await asyncio.sleep(300)
+
+        try:
+
+            async with pending_lock:
+
+                if not pending_signals:
+
+                    continue
+
+                signals = list(
+                    pending_signals.values()
+                )
+
+                pending_signals.clear()
+
+
+            # Score'a göre sırala
+            signals.sort(
+                key=lambda x: x["score"],
+                reverse=True
+            )
+
+
+            high = [
+                x for x in signals
+                if x["score"] >= 90
+            ]
+
+
+            strong = [
+                x for x in signals
+                if 80 <= x["score"] < 90
+            ]
+
+
+            radar = [
+                x for x in signals
+                if 70 <= x["score"] < 80
+            ]
+
+
+            lines = []
+
+            lines.append(
+                "🚨 *OKX SPOT SMART RADAR*"
+            )
+
+            lines.append(
+                "━━━━━━━━━━━━━━━━━━"
+            )
+
+
+            # HIGH
+            if high:
+
+                lines.append(
+                    "\n🔥 *HIGH PRIORITY*"
+                )
+
+                for item in high:
+
+                    lines.append(
+                        format_signal(
+                            item["symbol"],
+                            item["result"],
+                            item["level"]
+                        )
+                    )
+
+
+            # STRONG
+            if strong:
+
+                lines.append(
+                    "\n🟢 *STRONG WATCH*"
+                )
+
+                for item in strong:
+
+                    lines.append(
+                        format_signal(
+                            item["symbol"],
+                            item["result"],
+                            item["level"]
+                        )
+                    )
+
+
+            # RADAR
+            if radar:
+
+                lines.append(
+                    "\n🟡 *RADAR*"
+                )
+
+                for item in radar:
+
+                    lines.append(
+                        format_signal(
+                            item["symbol"],
+                            item["result"],
+                            item["level"]
+                        )
+                    )
+
+
+            # ------------------------------------------------
+            # WHALE
+            # ------------------------------------------------
+
+            whale_items = [
+
+                x for x in signals
+
+                if x["result"]["whale"]["meaningful"]
+            ]
+
+
+            if whale_items:
+
+                lines.append(
+                    "\n🐋 *BÜYÜK OYUNCU AKTİVİTESİ*"
+                )
+
+                for item in whale_items:
+
+                    lines.append(
+                        f"{item['symbol']} — "
+                        f"{item['result']['whale']['label']}"
+                    )
+
+
+            lines.append(
+                "\n━━━━━━━━━━━━━━━━━━"
+            )
+
+            lines.append(
+                f"📊 {len(signals)} güçlü fırsat "
+                f"tespit edildi."
+            )
+
+
+            message = "\n".join(
+                lines
+            )
+
+
+            await send_telegram_message(
+                message
+            )
+
+
+        except Exception as e:
+
+            print(
+                "Batch sender hata:",
+                e
+            )
+
+
+# ============================================================
+# WEBSOCKET
 # ============================================================
 
 async def trade_listener(
@@ -1843,6 +2273,7 @@ async def trade_listener(
 ):
 
     retry_delay = 2
+
 
     while True:
 
@@ -1853,6 +2284,7 @@ async def trade_listener(
                 f"{symbol}"
             )
 
+
             while True:
 
                 trades = (
@@ -1861,17 +2293,21 @@ async def trade_listener(
                     )
                 )
 
+
                 for trade in trades:
 
                     await flow.add_trade(
                         trade
                     )
 
+
                 retry_delay = 2
+
 
         except asyncio.CancelledError:
 
             raise
+
 
         except Exception as e:
 
@@ -1880,14 +2316,11 @@ async def trade_listener(
                 f"{symbol}: {e}"
             )
 
-            print(
-                f"🔄 {retry_delay} saniye "
-                f"sonra yeniden bağlanacak..."
-            )
 
             await asyncio.sleep(
                 retry_delay
             )
+
 
             retry_delay = min(
                 retry_delay * 2,
@@ -1905,20 +2338,24 @@ async def evaluator(
     market_24h_volume
 ):
 
-    # İlk cache verilerinin hazır olması için
-    await asyncio.sleep(
-        10
-    )
+    # İlk 1 saat flow oluşmadan
+    # sinyal vermesin.
+    await asyncio.sleep(60)
+
 
     while True:
 
         try:
 
             result = await calculate_score(
+
                 symbol,
+
                 flow,
+
                 market_24h_volume
             )
+
 
             if result is not None:
 
@@ -1926,47 +2363,86 @@ async def evaluator(
                     "score"
                 ]
 
+
+                flow_info = result[
+                    "flow_analysis"
+                ]
+
+
                 print(
+
                     f"🔎 {symbol:<15} "
+
                     f"Score: "
                     f"{score:>3}/100 | "
-                    f"RVOL: "
-                    f"{result['1h']['relative_volume']:.2f}x | "
+
+                    f"Flow: "
+                    f"{flow_info['net_flow']:,.0f} | "
+
                     f"Buy: "
-                    f"{result['flow']['buy_ratio'] * 100:.0f}%"
+                    f"{flow_info['buy_ratio'] * 100:.0f}% | "
+
+                    f"RVOL: "
+                    f"{result['1h']['relative_volume']:.2f}x"
                 )
 
-                new_level = (
-                    get_new_signal_level(
-                        symbol,
-                        score
-                    )
-                )
+
+                # =================================================
+                # EN ÖNEMLİ FİLTRE
+                #
+                # Skor 70+ olsa bile
+                # güçlü para girişi yoksa TELEGRAM YOK.
+                # =================================================
 
                 if (
-                    new_level >=
+
+                    score >=
                     MIN_SIGNAL_SCORE
+
+                    and
+
+                    flow_info["strong"]
                 ):
 
-                    print(
-                        f"\n🚨 SİNYAL "
-                        f"{symbol} "
-                        f"| {score}/100 "
-                        f"| LEVEL "
-                        f"{new_level}+\n"
-                    )
-
-                    message = (
-                        create_signal_message(
+                    new_level = (
+                        get_new_signal_level(
                             symbol,
-                            result,
-                            new_level
+                            score
                         )
                     )
 
-                    await send_telegram_message(
-                        message
-                    )
+
+                    if new_level >= MIN_SIGNAL_SCORE:
+
+                        async with pending_lock:
+
+                            pending_signals[
+                                symbol
+                            ] = {
+
+                                "symbol":
+                                    symbol,
+
+                                "score":
+                                    score,
+
+                                "level":
+                                    new_level,
+
+                                "result":
+                                    result
+                            }
+
+
+                        print(
+
+                            f"🚨 GÜÇLÜ PARA GİRİŞİ "
+                            f"{symbol} "
+                            f"| {score}/100 "
+                            f"| Flow "
+                            f"+{flow_info['net_flow']:,.0f}"
+                        )
+
 
         except Exception as e:
 
@@ -1975,9 +2451,8 @@ async def evaluator(
                 f"{symbol}: {e}"
             )
 
-        await asyncio.sleep(
-            60
-        )
+
+        await asyncio.sleep(60)
 
 
 # ============================================================
@@ -1991,18 +2466,24 @@ async def coin_worker(
 
     flow = MarketFlow()
 
+
     cleanup_task = asyncio.create_task(
+
         flow.cleanup_loop()
     )
 
+
     ws_task = asyncio.create_task(
+
         trade_listener(
             symbol,
             flow
         )
     )
 
+
     evaluator_task = asyncio.create_task(
+
         evaluator(
             symbol,
             flow,
@@ -2010,12 +2491,16 @@ async def coin_worker(
         )
     )
 
+
     try:
 
         await asyncio.gather(
+
             ws_task,
+
             evaluator_task
         )
+
 
     finally:
 
@@ -2034,7 +2519,6 @@ async def cache_manager(
     symbols
 ):
 
-    # İlk verileri al
     await asyncio.gather(
 
         refresh_1d(
@@ -2050,13 +2534,6 @@ async def cache_manager(
         )
     )
 
-    print(
-        "\n🚀 İlk market cache hazır."
-    )
-
-    # --------------------------------------------------------
-    # 1D LOOP
-    # --------------------------------------------------------
 
     async def daily_loop():
 
@@ -2070,9 +2547,6 @@ async def cache_manager(
                 symbols
             )
 
-    # --------------------------------------------------------
-    # 4H LOOP
-    # --------------------------------------------------------
 
     async def four_hour_loop():
 
@@ -2086,9 +2560,6 @@ async def cache_manager(
                 symbols
             )
 
-    # --------------------------------------------------------
-    # 1H LOOP
-    # --------------------------------------------------------
 
     async def one_hour_loop():
 
@@ -2101,6 +2572,7 @@ async def cache_manager(
             await refresh_1h(
                 symbols
             )
+
 
     await asyncio.gather(
 
@@ -2119,13 +2591,12 @@ async def cache_manager(
 async def main():
 
     print()
-
     print(
         "=============================================="
     )
 
     print(
-        "        OKX SPOT SMART RADAR V3"
+        "       OKX SPOT SMART RADAR V4"
     )
 
     print(
@@ -2159,7 +2630,7 @@ async def main():
     )
 
     print(
-        "Flow: Buy/Sell + Large Trades"
+        "Flow: GERÇEK PARA GİRİŞİ ZORUNLU"
     )
 
     print(
@@ -2167,7 +2638,7 @@ async def main():
     )
 
     print(
-        "pandas-ta: KULLANILMIYOR"
+        "Telegram: TOPLU MESAJ"
     )
 
     print(
@@ -2176,33 +2647,9 @@ async def main():
 
     print()
 
-    if not TELEGRAM_BOT_TOKEN:
-
-        print(
-            "❌ TELEGRAM_BOT_TOKEN Secret bulunamadı."
-        )
-
-    else:
-
-        print(
-            "✅ TELEGRAM_BOT_TOKEN bulundu."
-        )
-
-    if not TELEGRAM_CHAT_ID:
-
-        print(
-            "❌ TELEGRAM_CHAT_ID Secret bulunamadı."
-        )
-
-    else:
-
-        print(
-            "✅ TELEGRAM_CHAT_ID bulundu."
-        )
-
-    print()
 
     markets = await exchange.load_markets()
+
 
     top_coins = (
         await get_top_100_symbols(
@@ -2210,72 +2657,85 @@ async def main():
         )
     )
 
+
     if not top_coins:
 
         print(
-            "❌ Uygun coin bulunamadı."
+            "Uygun coin bulunamadı."
         )
 
         return
 
+
     symbols = [
+
         x[0]
+
         for x in top_coins
     ]
 
+
     volume_map = {
-        symbol: volume
+
+        symbol:
+            volume
+
         for symbol, volume
         in top_coins
     }
+
 
     print(
         f"🚀 {len(symbols)} coin "
         f"radara alınıyor..."
     )
 
-    # --------------------------------------------------------
-    # CACHE MANAGER
-    # --------------------------------------------------------
 
     cache_task = asyncio.create_task(
+
         cache_manager(
             symbols
         )
     )
 
-    # --------------------------------------------------------
-    # COIN WORKERS
-    # --------------------------------------------------------
+
+    batch_task = asyncio.create_task(
+
+        batch_sender()
+    )
+
 
     worker_tasks = []
+
 
     for symbol in symbols:
 
         worker_tasks.append(
 
-            asyncio.create_task(
-                coin_worker(
-                    symbol,
-                    volume_map[symbol]
-                )
+            coin_worker(
+                symbol,
+                volume_map[symbol]
             )
         )
+
 
     try:
 
         await asyncio.gather(
+
             cache_task,
+
+            batch_task,
+
             *worker_tasks
         )
+
 
     except asyncio.CancelledError:
 
         cache_task.cancel()
 
-        for task in worker_tasks:
-
-            task.cancel()
+        batch_task.cancel()
 
         raise
 
@@ -2302,7 +2762,7 @@ async def run_bot():
 
             await exchange.close()
 
-        except Exception:
+        except:
 
             pass
 
