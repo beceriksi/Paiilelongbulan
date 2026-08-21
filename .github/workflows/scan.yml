@@ -1,0 +1,50 @@
+name: OKX Smart Early Radar
+
+on:
+  schedule:
+    # Her 10 dakikada bir çalışır (GitHub Actions cron dakika hassasiyeti
+    # garanti etmez, gerçekte 5-15 dk arası gecikme olabilir)
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}   # Elle tetiklemek için (Actions sekmesinden "Run workflow")
+
+# Aynı anda iki taramanın çakışıp state.json'a çifte yazmasını engeller
+concurrency:
+  group: okx-radar
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Repo'yu çek
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Bağımlılıkları yükle
+        run: pip install -r requirements.txt
+
+      - name: Botu çalıştır
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python bot.py
+
+      - name: Cooldown state'i repoya geri yaz
+        run: |
+          if [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name "okx-radar-bot"
+            git config user.email "actions@github.com"
+            git add state.json
+            git commit -m "state.json güncellendi [skip ci]"
+            git push
+          else
+            echo "state.json değişmedi, commit atlanıyor."
+          fi
