@@ -2,31 +2,40 @@ name: OKX Smart Early Flow Radar
 
 on:
   schedule:
-    # Her saat başı çalışır. UTC kullanılır.
-    - cron: '5 * * * *'
+    # Her 15 dakikada bir çalışır (Örn: 00:00, 00:15, 00:30, 00:45)
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 jobs:
   radar:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    permissions:
+      contents: write # State dosyasını repoya geri commit edebilmek için şarttır
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Python kurulumu
+      - name: Python Kurulumu
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Paketleri kur
+      - name: Paketleri Kur
         run: |
           python -m pip install --upgrade pip
-          pip install aiohttp ccxt pandas
+          pip install requests pandas
 
-      - name: Botu çalıştır
+      - name: Botu Çalıştır
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
+
+      - name: Hafızayı (State) Repoya Kaydet
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add signal_state.json || true
+          git commit -m "update signal state [skip ci]" || true
+          git push || true
